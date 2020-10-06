@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title></title>
+
+    <style type="text/css">
+    body {
+    background-color: #cae4ff;
+    color: #000000;
+    }
+    div#div1 {
+    background-color: #cae4ff;
+    color: #000000;
+    }
+    #canvas {
+      width: 512px;
+      height: 512px;
+    }
+    </style>
+
+  </head>
+  <body>
+    <div class="div1">
+      aaaa
+      <canvas id="canvas" width="128" height="128"></canvas>
+      bbb
+    </div>
+
+    <script type="text/javascript">
+
+    var imports = {};
+    imports.module = {};
+    imports.env =  {};
+    imports.env.memoryBase =  0;
+    imports.env.tableBase = 0;
+    imports.env.memory = new WebAssembly.Memory({ initial: 256 });
+    imports.env.table = new WebAssembly.Table({ initial: 0, element: 'anyfunc' });
+    var exports;
+
+    if (!('WebAssembly' in window)) {
+      alert('you need a browser with wasm support enabled :(');
+    }else{
+      console.log("Enabled wasm!");
+    }
+
+    fetch('cell.wasm').then(response => response.arrayBuffer() )
+    .then(bytes =>  {
+      var instance = WebAssembly.instantiate(bytes) ;
+      return instance;
+    }).then( wasm => {
+      exports=wasm.instance.exports;
+      frame_setup();
+    })
+
+    function frame_setup(){
+
+      var Sz = 128;
+      var Ch = 16;
+      var state_ptr = exports.malloc( Sz*Sz*Ch*4 ); //FLOAT=4byte/item;
+      var state2_ptr = exports.malloc( Sz*Sz*64*4 ); // hidden state
+      console.log(state_ptr);
+      console.log(state2_ptr);
+
+      // init state
+      exports.init_state( state_ptr, Sz, Ch);
+
+      var size = 128*128*4;
+      var ptr = exports.malloc( size );
+
+      var arr = new Uint8ClampedArray(exports.memory.buffer, ptr, size);
+      var img = new ImageData(arr, 128,128);
+
+      var canvas = document.querySelector("#canvas");
+      var ctx = canvas.getContext('2d');
+      var time = 0;
+
+      function draw(){
+        time += 1;
+
+        if (time%1==0){
+          for (let it = 0; it < 1000; it++) {
+            var x_ = Math.floor( Math.random() * Sz ) ;
+            var y_ = Math.floor( Math.random() * Sz ) ;
+            var c_ = Math.floor( Math.random() * 2 ) ;
+            var chance = Math.floor( Math.random() * 1000 ) ;
+            var v_ = (chance==0)?1:-1;
+
+            exports.set_float( state_ptr, Sz, Ch, x_ , y_, 10+c_ , v_ );
+          }
+
+
+        }
+
+        // update state
+        exports.update_state( state_ptr, state2_ptr, Sz, Ch);
+        console.log("!");
+
+
+        // write state to img
+        exports.state2img( state_ptr, Sz, Ch, ptr);
+
+        //exports.arr_addui( ptr, 2, 10000 );
+        ctx.putImageData(img,0,0);
+        window.requestAnimationFrame(draw);
+        //console.log("draw.");
+      }
+      window.requestAnimationFrame(draw);
+    }
+
+    </script>
+  </body>
+</html>
